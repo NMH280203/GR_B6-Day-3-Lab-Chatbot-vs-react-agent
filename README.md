@@ -1,56 +1,160 @@
-# Lab 3: Chatbot vs ReAct Agent (Industry Edition)
+# Lab 3: Chatbot vs ReAct Agent
 
-Welcome to Phase 3 of the Agentic AI course! This lab focuses on moving from a simple LLM Chatbot to a sophisticated **ReAct Agent** with industry-standard monitoring.
+This project compares a simple LLM chatbot with a ReAct-style HR agent. The agent can call HR tools to answer questions about employee profiles, leave balances, payroll, departments, and company HR policies.
 
-## 🚀 Getting Started
+## Features
 
-### 1. Setup Environment
-Copy the `.env.example` to `.env` and fill in your API keys:
-```bash
-cp .env.example .env
+- Chatbot baseline without tools.
+- ReAct Agent v1 with `Thought -> Action -> Observation` loop.
+- ReAct Agent v2 with parser retry, tool validation, required-argument validation, max-step guardrail, and HR-only scope.
+- HR tools backed by mock data in `src/tools/hr_data.py`.
+- Telemetry logs for latency, token usage, estimated cost, tool calls, and tool results.
+- Streamlit GUI for live demo.
+- Provider switching through `src/core/provider_factory.py`.
+
+## Setup
+
+### 1. Create environment file
+
+Copy `.env.example` to `.env`:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
-### 2. Install Dependencies
-```bash
+### 2. Install dependencies
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Or, if you are not using the existing virtual environment:
+
+```powershell
 pip install -r requirements.txt
 ```
 
-### 3. Directory Structure
-- `src/tools/`: Extension point for your custom tools.
+## Run with Ollama
 
-## 🏠 Running with Local Models (CPU)
+The current local demo uses Ollama with `llama3.2`.
 
-If you don't want to use OpenAI or Gemini, you can run open-source models (like Phi-3) directly on your CPU using `llama-cpp-python`.
+### 1. Install and start Ollama
 
-### 1. Download the Model
-Download the **Phi-3-mini-4k-instruct-q4.gguf** (approx 2.2GB) from Hugging Face:
-- [Phi-3-mini-4k-instruct-GGUF](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf)
-- Direct Download: [phi-3-mini-4k-instruct-q4.gguf](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf)
+Make sure Ollama is running, then pull the model:
 
-### 2. Place Model in Project
-Create a `models/` folder in the root and move the downloaded `.gguf` file there.
+```powershell
+ollama pull llama3.2
+```
 
-### 3. Update `.env`
-Change your `DEFAULT_PROVIDER` and set the path:
+Check available models:
+
+```powershell
+ollama list
+```
+
+### 2. Configure `.env`
+
+```env
+DEFAULT_PROVIDER=ollama
+DEFAULT_MODEL=llama3.2
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+```
+
+### 3. Run the Streamlit app
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run src\Gui\app.py
+```
+
+Open:
+
+```text
+http://localhost:8501
+```
+
+## Run Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## Run Comparative Evaluation
+
+This runs the chatbot baseline, ReAct Agent v1, and ReAct Agent v2 across 10 HR scenarios:
+
+```powershell
+.\.venv\Scripts\python.exe tests\test_hr_agent.py
+```
+
+The generated report is saved to:
+
+```text
+report/comparative_evaluation_report.md
+```
+
+## Optional Providers
+
+The project also supports:
+
+- OpenAI
+- Gemini
+- Local GGUF through `llama-cpp-python`
+
+Set the provider in `.env`:
+
+```env
+DEFAULT_PROVIDER=openai
+DEFAULT_MODEL=gpt-4o
+```
+
+or:
+
+```env
+DEFAULT_PROVIDER=gemini
+DEFAULT_MODEL=gemini-2.5-flash
+```
+
+or:
+
 ```env
 DEFAULT_PROVIDER=local
 LOCAL_MODEL_PATH=./models/Phi-3-mini-4k-instruct-q4.gguf
 ```
 
-## 🎯 Lab Objectives
+For GGUF local mode, install `llama-cpp-python` separately because the current Ollama workflow does not require it.
 
-1.  **Baseline Chatbot**: Observe the limitations of a standard LLM when faced with multi-step reasoning.
-2.  **ReAct Loop**: Implement the `Thought-Action-Observation` cycle in `src/agent/agent.py`.
-3.  **Provider Switching**: Swap between OpenAI and Gemini seamlessly using the `LLMProvider` interface.
-4.  **Failure Analysis**: Use the structured logs in `logs/` to identify why the agent fails (hallucinations, parsing errors).
-5.  **Grading & Bonus**: Follow the [SCORING.md](file:///Users/tindt/personal/ai-thuc-chien/day03-lab-agent/SCORING.md) to maximize your points and explore bonus metrics.
+## Project Structure
 
-## 🛠️ How to Use This Baseline
-The code is designed as a **Production Prototype**. It includes:
-- **Telemetry**: Every action is logged in JSON format for later analysis.
-- **Robust Provider Pattern**: Easily extendable to any LLM API.
-- **Clean Skeletons**: Focus on the logic that matters—the agent's reasoning process.
+```text
+src/
+  agent/
+    chatbot.py
+    agent.py
+  core/
+    provider_factory.py
+    openai_provider.py
+    gemini_provider.py
+    ollama_provider.py
+    local_provider.py
+  tools/
+    hr_data.py
+    hr_tools.py
+  telemetry/
+    logger.py
+    metrics.py
+  Gui/
+    app.py
+tests/
+  test_hr_agent.py
+  test_local.py
+report/
+  group_report/
+  individual_reports/
+```
 
----
+## Notes
 
-*Happy Coding! Let's build agents that actually work.*
+- Local Ollama inference is slower than cloud APIs, especially for ReAct because each step calls the model again.
+- Logs are written to `logs/`.
+- The HR agent is intentionally limited to HR-management questions only.

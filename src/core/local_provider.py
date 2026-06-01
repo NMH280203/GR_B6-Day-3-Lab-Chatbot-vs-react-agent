@@ -2,8 +2,6 @@ import os
 import time
 from typing import Dict, Any, Optional, Generator
 
-from llama_cpp import Llama
-
 from src.core.llm_provider import LLMProvider
 
 
@@ -12,10 +10,15 @@ class LocalProvider(LLMProvider):
     Local GGUF provider using llama-cpp-python.
     Optimized for CPU inference.
     """
-<<<<<<< HEAD
-    def __init__(self, model_path: str, n_ctx: int = 4096, n_threads: Optional[int] = None):
+    def __init__(
+        self,
+        model_path: str,
+        n_ctx: int = 4096,
+        n_threads: Optional[int] = None
+    ):
         """
         Initialize the local Llama model.
+
         Args:
             model_path: Path to the .gguf model file.
             n_ctx: Context window size.
@@ -24,22 +27,17 @@ class LocalProvider(LLMProvider):
         super().__init__(model_name=os.path.basename(model_path))
 
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at {model_path}. Please download it first.")
-=======
->>>>>>> Khoa
-
-    def __init__(
-        self,
-        model_path: str,
-        n_ctx: int = 4096,
-        n_threads: Optional[int] = None
-    ):
-        super().__init__(model_name=os.path.basename(model_path))
-
-        if not os.path.exists(model_path):
             raise FileNotFoundError(
-                f"Model file not found: {model_path}"
+                f"Model file not found at {model_path}. Please download it first."
             )
+
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise ImportError(
+                "llama-cpp-python is required for DEFAULT_PROVIDER=local. "
+                "Install it with: pip install llama-cpp-python"
+            ) from exc
 
         self.llm = Llama(
             model_path=model_path,
@@ -49,13 +47,6 @@ class LocalProvider(LLMProvider):
             verbose=False
         )
 
-<<<<<<< HEAD
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
-        start_time = time.time()
-
-        # Phi-3 / Llama-3 style formatting if not handled by a template
-        full_prompt = prompt
-=======
     def _build_prompt(
         self,
         prompt: str,
@@ -65,7 +56,6 @@ class LocalProvider(LLMProvider):
         Phi-3 Instruct prompt template
         """
 
->>>>>>> Khoa
         if system_prompt:
             return (
                 f"<|system|>\n"
@@ -96,18 +86,13 @@ class LocalProvider(LLMProvider):
 
         response = self.llm(
             full_prompt,
-<<<<<<< HEAD
             max_tokens=self.max_tokens,
-            stop=["<|end|>", "Observation:"],
-=======
-            max_tokens=512,
             temperature=0.7,
             top_p=0.9,
             stop=[
                 "<|end|>",
                 "Observation:"
             ],
->>>>>>> Khoa
             echo=False
         )
 
@@ -157,7 +142,7 @@ class LocalProvider(LLMProvider):
 
         stream = self.llm(
             full_prompt,
-            max_tokens=512,
+            max_tokens=self.max_tokens,
             temperature=0.7,
             top_p=0.9,
             stop=[
