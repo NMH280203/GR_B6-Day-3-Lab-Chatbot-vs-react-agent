@@ -6,11 +6,12 @@ from src.core.llm_provider import LLMProvider
 class OpenAIProvider(LLMProvider):
     def __init__(self, model_name: str = "gpt-4o", api_key: Optional[str] = None):
         super().__init__(model_name, api_key)
+        self.provider = "openai"
         self.client = OpenAI(api_key=self.api_key)
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         start_time = time.time()
-        
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -19,6 +20,7 @@ class OpenAIProvider(LLMProvider):
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=messages,
+            max_tokens=self.max_tokens,
         )
 
         end_time = time.time()
@@ -31,6 +33,14 @@ class OpenAIProvider(LLMProvider):
             "completion_tokens": response.usage.completion_tokens,
             "total_tokens": response.usage.total_tokens
         }
+
+        from src.telemetry.metrics import tracker
+        tracker.track_request(
+            provider="openai",
+            model=self.model_name,
+            usage=usage,
+            latency_ms=latency_ms
+        )
 
         return {
             "content": content,

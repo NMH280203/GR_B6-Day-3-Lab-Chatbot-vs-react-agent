@@ -12,6 +12,21 @@ class LocalProvider(LLMProvider):
     Local GGUF provider using llama-cpp-python.
     Optimized for CPU inference.
     """
+<<<<<<< HEAD
+    def __init__(self, model_path: str, n_ctx: int = 4096, n_threads: Optional[int] = None):
+        """
+        Initialize the local Llama model.
+        Args:
+            model_path: Path to the .gguf model file.
+            n_ctx: Context window size.
+            n_threads: Number of CPU threads to use. Defaults to all available.
+        """
+        super().__init__(model_name=os.path.basename(model_path))
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found at {model_path}. Please download it first.")
+=======
+>>>>>>> Khoa
 
     def __init__(
         self,
@@ -34,6 +49,13 @@ class LocalProvider(LLMProvider):
             verbose=False
         )
 
+<<<<<<< HEAD
+    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
+        start_time = time.time()
+
+        # Phi-3 / Llama-3 style formatting if not handled by a template
+        full_prompt = prompt
+=======
     def _build_prompt(
         self,
         prompt: str,
@@ -43,6 +65,7 @@ class LocalProvider(LLMProvider):
         Phi-3 Instruct prompt template
         """
 
+>>>>>>> Khoa
         if system_prompt:
             return (
                 f"<|system|>\n"
@@ -73,6 +96,10 @@ class LocalProvider(LLMProvider):
 
         response = self.llm(
             full_prompt,
+<<<<<<< HEAD
+            max_tokens=self.max_tokens,
+            stop=["<|end|>", "Observation:"],
+=======
             max_tokens=512,
             temperature=0.7,
             top_p=0.9,
@@ -80,6 +107,7 @@ class LocalProvider(LLMProvider):
                 "<|end|>",
                 "Observation:"
             ],
+>>>>>>> Khoa
             echo=False
         )
 
@@ -99,6 +127,14 @@ class LocalProvider(LLMProvider):
                 "completion_tokens": 0,
                 "total_tokens": 0
             }
+        )
+
+        from src.telemetry.metrics import tracker
+        tracker.track_request(
+            provider="local",
+            model=self.model_name,
+            usage=usage,
+            latency_ms=latency_ms
         )
 
         return {
