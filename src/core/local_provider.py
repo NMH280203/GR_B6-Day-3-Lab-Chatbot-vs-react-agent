@@ -18,7 +18,7 @@ class LocalProvider(LLMProvider):
             n_threads: Number of CPU threads to use. Defaults to all available.
         """
         super().__init__(model_name=os.path.basename(model_path))
-        
+
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}. Please download it first.")
 
@@ -32,7 +32,7 @@ class LocalProvider(LLMProvider):
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         start_time = time.time()
-        
+
         # Phi-3 / Llama-3 style formatting if not handled by a template
         full_prompt = prompt
         if system_prompt:
@@ -42,7 +42,7 @@ class LocalProvider(LLMProvider):
 
         response = self.llm(
             full_prompt,
-            max_tokens=1024,
+            max_tokens=self.max_tokens,
             stop=["<|end|>", "Observation:"],
             echo=False
         )
@@ -56,6 +56,14 @@ class LocalProvider(LLMProvider):
             "completion_tokens": response["usage"]["completion_tokens"],
             "total_tokens": response["usage"]["total_tokens"]
         }
+
+        from src.telemetry.metrics import tracker
+        tracker.track_request(
+            provider="local",
+            model=self.model_name,
+            usage=usage,
+            latency_ms=latency_ms
+        )
 
         return {
             "content": content,

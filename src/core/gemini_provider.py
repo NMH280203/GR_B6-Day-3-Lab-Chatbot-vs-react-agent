@@ -5,21 +5,28 @@ from typing import Dict, Any, Optional, Generator
 from src.core.llm_provider import LLMProvider
 
 class GeminiProvider(LLMProvider):
-    def __init__(self, model_name: str = "gemini-1.5-flash", api_key: Optional[str] = None):
+    def __init__(self, model_name: str = "gemini-2.5-flash", api_key: Optional[str] = None):
+        if not api_key:
+            api_key = os.getenv("GEMINI_API_KEY")
         super().__init__(model_name, api_key)
-        genai.configure(api_key=self.api_key)
+        self.provider = "google"
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel(model_name)
 
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         start_time = time.time()
-        
+
         # In Gemini, system instruction is passed during model initialization or as a prefix
         # For simplicity in this lab, we'll prepend it if provided
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
 
-        response = self.model.generate_content(full_prompt)
+        response = self.model.generate_content(
+            full_prompt,
+            generation_config={"max_output_tokens": self.max_tokens}
+        )
 
         end_time = time.time()
         latency_ms = int((end_time - start_time) * 1000)
@@ -31,6 +38,14 @@ class GeminiProvider(LLMProvider):
             "completion_tokens": response.usage_metadata.candidates_token_count,
             "total_tokens": response.usage_metadata.total_token_count
         }
+
+        from src.telemetry.metrics import tracker
+        tracker.track_request(
+            provider="google",
+            model=self.model_name,
+            usage=usage,
+            latency_ms=latency_ms
+        )
 
         return {
             "content": content,
