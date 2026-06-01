@@ -27,10 +27,24 @@ class PerformanceTracker:
 
     def _calculate_cost(self, model: str, usage: Dict[str, int]) -> float:
         """
-        TODO: Implement real pricing logic.
-        For now, returns a dummy constant.
+        Calculates the real estimated API cost for OpenAI GPT-4o and Google Gemini 2.5 Flash.
         """
-        return (usage.get("total_tokens", 0) / 1000) * 0.01
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        
+        model_lower = model.lower()
+        if "gpt-4" in model_lower or "openai" in model_lower:
+            # GPT-4o: $2.50/M input, $10.00/M output
+            return (prompt_tokens * 2.50 + completion_tokens * 10.00) / 1_000_000
+        elif "gemini-2.5" in model_lower or "google" in model_lower:
+            # Gemini 2.5 Flash: $0.075/M input, $0.30/M output
+            return (prompt_tokens * 0.075 + completion_tokens * 0.30) / 1_000_000
+        elif "gemini-1.5" in model_lower:
+            # Gemini 1.5 Flash: $0.075/M input, $0.30/M output (similar)
+            return (prompt_tokens * 0.075 + completion_tokens * 0.30) / 1_000_000
+        else:
+            # Local models are free
+            return 0.0
 
 # Global tracker instance
 tracker = PerformanceTracker()
