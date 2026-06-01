@@ -1,107 +1,193 @@
-# Báo cáo Nhóm: Lab 3 - Hệ thống HR Agent Cấp Thương mại (Production-Grade)
+# Bao cao Nhom: Lab 3 - HR ReAct Agent
 
-- **Tên nhóm (Team Name)**: B6
-- **Thành viên nhóm (Team Members)**: Nguyễn Văn Duy, Nghiêm tuấn linh, Nguyễn Mạnh Hiếu, Đặng minh chức, Trần Văn Khoa
-- **Ngày triển khai (Deployment Date)**: 01/06/2026
-
----
-
-## 1. Tóm tắt Dự án (Executive Summary)
-
-*Tổng quan ngắn gọn về mục tiêu của tác nhân (agent) và tỷ lệ thành công của nó so với chatbot cơ sở (baseline).*
-
-- **Tỷ lệ thành công (Success Rate)**: Đạt **100%** trên phiên bản ReAct Agent v2 đối với 20 trường hợp kiểm thử tiêu chuẩn, so với chỉ **30%** của Chatbot Baseline.
-- **Kết quả cốt lõi (Key Outcome)**: Tác nhân của chúng tôi đã giải quyết thành công nhiều hơn 70% các câu hỏi logic toán học phức tạp nhiều bước so với chatbot cơ sở bằng việc xác định và thực thi chính xác các công cụ cơ sở dữ liệu HR cục bộ, loại bỏ hoàn toàn hiện tượng bịa đặt thông tin (hallucination).
+- **Team Name**: B6
+- **Team Members**: Nguyen Van Duy, Nghiem Tuan Linh, Nguyen Manh Hieu, Dang Minh Chuc, Tran Van Khoa
+- **Deployment Date**: 01/06/2026
 
 ---
 
-## 2. Kiến trúc Hệ thống & Danh mục Công cụ
+## 1. Executive Summary
 
-### 2.1 Triển khai Vòng lặp ReAct
-*Sơ đồ và mô tả về vòng lặp tư duy Thought-Action-Observation của hệ thống.*
+Du an xay dung mot tro ly quan ly nhan su noi bo, so sanh giua **Chatbot Baseline** va **ReAct Agent**. Chatbot Baseline chi goi LLM truc tiep, trong khi ReAct Agent co the suy luan theo vong lap `Thought -> Action -> Observation`, goi cac cong cu HR de tra cuu du lieu nhan vien, ngay phep, bang luong va chinh sach cong ty.
 
-Hệ thống triển khai vòng lặp suy luận Thought-Action-Observation tại `src/agent/agent.py` để phân tích các câu hỏi của người dùng và gọi các công cụ tương ứng.
+- **Tap kiem thu**: `tests/test_hr_agent.py` gom 10 scenario HR, bao phu cau hoi policy, lookup, leave balance, payroll, multi-step va failure case.
+- **Ket qua chinh**: ReAct Agent v2 giam loi so voi v1 bang cach them retry khi Action JSON sai, validate ten tool, validate tham so bat buoc va gioi han `max_steps`.
+- **Gia tri hoc duoc**: Chatbot phu hop voi cau hoi ngon ngu tong quat, nhung Agent dang tin cay hon voi cau hoi can du lieu noi bo va tinh toan nhieu buoc.
+
+---
+
+## 2. System Architecture & Tooling
+
+### 2.1 ReAct Loop Implementation
+
+ReAct Agent duoc cai dat tai `src/agent/agent.py`. Moi request duoc xu ly theo vong lap:
 
 ```mermaid
 graph TD
-    User([Yêu cầu từ người dùng]) --> Prompt[Thiết lập Prompt kèm đặc tả công cụ]
-    Prompt --> Gen[LLM tạo Thought + Action]
-    Gen --> Parse{Có phải câu trả lời cuối cùng?}
-    Parse -- Đúng --> Return([Trả kết quả cho người dùng])
-    Parse -- Sai --> ParseAction[Phân tích cú pháp JSON Action]
-    ParseAction --> Exec[Thực thi công cụ Python HR]
-    Exec --> Obs[Thêm Observation vào lịch sử Prompt]
-    Obs --> Gen
+    User([User Request]) --> Prompt[System Prompt + Tool Descriptions]
+    Prompt --> LLM[LLM generates Thought and Action]
+    LLM --> Final{Has Final Answer?}
+    Final -- Yes --> Answer[Return Answer]
+    Final -- No --> Parse[Parse JSON Action]
+    Parse --> Validate[Validate Tool and Args]
+    Validate --> Tool[Execute HR Tool]
+    Tool --> Obs[Append Observation]
+    Obs --> LLM
 ```
 
-### 2.2 Định nghĩa các Công cụ (Danh mục)
-*Bảng danh mục 5 công cụ HR chính được định nghĩa trong `src/tools/hr_tools.py`:*
+Agent v2 co them cac guardrail:
 
-| Tên công cụ (Tool Name) | Định dạng đầu vào (Input Format) | Tình huống sử dụng (Use Case) |
+- Retry khi LLM sinh Action khong dung JSON.
+- Kiem tra tool co ton tai trong `TOOLS_MAP`.
+- Kiem tra tham so bat buoc theo metadata.
+- Gioi han so vong lap bang `max_steps`.
+- Gioi han pham vi: agent chi tra loi cau hoi lien quan quan ly nhan su.
+
+### 2.2 Tool Definitions
+
+| Tool Name | Input Format | Use Case |
 | :--- | :--- | :--- |
-| `get_employee` | `json` (chứa `employee_id_or_name`) | Truy xuất chi tiết hồ sơ nhân viên (ID, tên, phòng ban, vai trò, người quản lý, ngày tham gia). |
-| `get_leave_balance` | `json` (chứa `employee_id_or_name`) | Truy xuất số dư ngày phép năm, phép đã dùng và ngày phép còn lại. |
-| `calculate_payroll` | `json` (chứa `employee_id_or_name`, `month`) | Tính toán lương thực nhận của nhân viên (Net = Base + Bonus + Allowance - Deductions). |
-| `search_policy` | `json` (chứa `query`) | Tìm kiếm từ khóa trên các chính sách công ty (Nghỉ phép, Giờ làm việc, OT...). |
-| `list_department_employees`| `json` (chứa `department`) | Liệt kê danh sách tất cả các nhân viên hoạt động trong một phòng ban được chỉ định. |
+| `get_employee` | JSON: `employee_id_or_name` | Lay ho so nhan vien: ID, ten, phong ban, chuc vu, manager, ngay vao cong ty. |
+| `get_leave_balance` | JSON: `employee_id_or_name` | Lay ngay phep nam, ngay da dung va ngay con lai. |
+| `calculate_payroll` | JSON: `employee_id_or_name`, optional `month` | Tinh luong thuc nhan: base salary + bonus + allowance - deductions. |
+| `search_policy` | JSON: `query` | Tim chinh sach HR theo tu khoa: leave, remote work, OT, payroll. |
+| `list_department_employees` | JSON: `department` | Liet ke nhan vien theo phong ban: Engineering, Sales, HR. |
 
-### 2.3 Các nhà cung cấp LLM đã sử dụng
-- **Mô hình chính (Primary)**: Google Gemini 2.5 Flash (sử dụng vì khả năng xuất JSON chính xác và chi phí tối ưu).
-- **Mô hình phụ trợ (Secondary / Backup)**: OpenAI GPT-4o (tích hợp qua provider factory).
+### 2.3 LLM Providers Used
 
----
+- **Primary for current local demo**: Ollama with `llama3.2`
+- **Supported backup providers**: OpenAI, Gemini, local GGUF via `llama-cpp-python`
 
-## 3. Nhật ký Giám sát & Bảng điều khiển Hiệu năng
+Provider switching duoc cai dat trong `src/core/provider_factory.py`. Cau hinh hien tai su dung:
 
-*Phân tích các chỉ số vận hành thu thập được trong lượt chạy thử nghiệm cuối cùng.*
-
-- **Độ trễ trung bình P50 (Average Latency (P50))**: 2800ms (cho toàn bộ các bước gọi vòng lặp ReAct của một câu hỏi).
-- **Độ trễ tối đa P99 (Max Latency (P99))**: 5200ms (khi Agent cần thực thi song song nhiều lượt gọi tool tính toán).
-- **Số lượng Token trung bình mỗi tác vụ (Average Tokens per Task)**: 1200 tokens (bao gồm cả lịch sử prompt và phản hồi từ các quan sát).
-- **Tổng chi phí của bộ kiểm thử (Total Cost of Test Suite)**: $0.0009 USD (chi phí tối ưu nhờ giá thành thấp của Gemini 2.5 Flash).
-
----
-
-## 4. Phân tích Nguyên nhân gốc rễ (RCA) - Lịch sử lỗi
-
-*Đi sâu vào các trường hợp lỗi xảy ra trên phiên bản ReAct Agent v1.*
-
-### Tình huống 1: Lỗi cú pháp JSON Action (V1 Malformed JSON)
-- **Đầu vào (Input)**: "Tính lương thực nhận tháng này của Nguyễn Văn A?"
-- **Kết quả quan sát (Observation)**: Agent v1 gặp ngoại lệ `JSONDecodeError` và crash ngay lập tức do LLM xuất ra chuỗi định dạng gọi hàm thông thường: `Action: get_employee("Nguyễn Văn A")`.
-- **Nguyên nhân gốc rễ (Root Cause)**: LLM không tuân thủ định dạng xuất JSON nghiêm ngặt trong khối Action. Trong bản V1, hệ thống chưa có cơ chế kiểm tra định dạng và hồi đáp lỗi ngược lại để LLM sửa chữa.
-
-### Tình huống 2: Thiếu tham số đối số bắt buộc (V1 Missing Argument)
-- **Đầu vào (Input)**: "Hãy tính giúp tôi lương thực nhận tháng này của nhân viên."
-- **Kết quả quan sát (Observation)**: Python backend bị crash do LLM gọi công cụ `calculate_payroll` với bộ tham số trống: `{"tool": "calculate_payroll", "args": {}}`.
-- **Nguyên nhân gốc rễ (Root Cause)**: Thiếu các lớp kiểm soát tính đúng đắn của tham số trước khi truyền trực tiếp vào backend Python, làm sập hàm do thiếu đối số bắt buộc `employee_id_or_name`.
+```env
+DEFAULT_PROVIDER=ollama
+DEFAULT_MODEL=llama3.2
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+```
 
 ---
 
-## 5. Nghiên cứu Thử nghiệm & So sánh Độc làm (Ablation Studies)
+## 3. Telemetry & Performance Dashboard
 
-### Thử nghiệm 1: Phiên bản Prompt v1 so với Prompt v2
-- **Đoạn khác biệt (Diff)**: Bổ sung Rule số 2 cho phép gọi trực tiếp công cụ bằng tên thay vì bắt buộc dùng mã ID nhân viên, và tích hợp cơ chế tự phục hồi cú pháp JSON (Self-healing).
-- **Kết quả (Result)**: Giảm tỷ lệ lỗi cuộc gọi công cụ không hợp lệ xuống 0%, đồng thời tiết kiệm 50% độ trễ hệ thống nhờ giảm được 1 lượt chạy vòng lặp thừa.
+He thong co telemetry tai `src/telemetry/logger.py` va `src/telemetry/metrics.py`. Moi lan goi LLM duoc log cac metric:
 
-### Thử nghiệm 2: So sánh Chatbot Baseline với ReAct Agent
-*Bảng so sánh hiệu năng thực tế xử lý các tác vụ cụ thể trong dự án:*
+- Provider va model
+- Prompt tokens
+- Completion tokens
+- Total tokens
+- Latency
+- Estimated cost
 
-| Trường hợp (Case) | Kết quả Chatbot (Chatbot Result) | Kết quả Agent (Agent Result) | Người thắng (Winner) |
+Kiem tra hien tai tren may local:
+
+| Check | Result |
+| :--- | :--- |
+| Ollama connection | Pass |
+| Available model | `llama3.2:latest` |
+| Unit test | `1 passed` |
+| ReAct smoke test | Pass |
+| Streamlit GUI | HTTP 200 |
+| Cost | `$0.000000` vi chay local qua Ollama |
+
+Vi chay local model, latency cao hon API cloud. Mot smoke test HR voi cau "Nhan vien NV003 con bao nhieu ngay nghi phep nam?" hoan thanh trong 2 ReAct steps va tra loi dung: **4 ngay nghi phep nam**.
+
+---
+
+## 4. Root Cause Analysis (RCA) - Failure Traces
+
+### Case Study 1: Malformed JSON Action
+
+- **Input**: "Tinh luong thuc nhan thang nay cua Nguyen Van A?"
+- **Observation**: Agent v1 co the sinh Action theo dang tu nhien, vi du `Action: get_employee("Nguyen Van A")`, khong phai JSON hop le.
+- **Root Cause**: Prompt v1 chua du manh de bat LLM xuat dung format JSON, parser lai yeu cau JSON nghiem ngat.
+- **Fix in v2**: Khi parse Action loi, agent dua Observation phan hoi lai cho LLM va yeu cau xuat lai dung format:
+
+```text
+Action: {"tool": "tool_name", "args": {"param": "value"}}
+```
+
+### Case Study 2: Missing Required Argument
+
+- **Input**: "Hay tinh giup toi luong thuc nhan thang nay cua nhan vien."
+- **Observation**: LLM co the goi `calculate_payroll` voi `args` rong.
+- **Root Cause**: Cau hoi thieu ten hoac ma nhan vien, trong khi tool can `employee_id_or_name`.
+- **Fix in v2**: `_validate_args()` kiem tra required parameters truoc khi goi Python tool. Neu thieu tham so, agent nhan Observation loi va phai hoi lai nguoi dung hoac tra loi rang thieu thong tin.
+
+### Case Study 3: Out-of-scope Request
+
+- **Input**: "Viet cho toi mot bai tho ve mua xuan."
+- **Observation**: Neu khong co domain boundary, LLM co the tra loi ngoai muc tieu HR.
+- **Root Cause**: System prompt ban dau chi noi agent la HR Agent, chua yeu cau tu choi cau hoi ngoai pham vi.
+- **Fix**: Them rule vao system prompt: agent chi tra loi cau hoi quan ly nhan su; cau ngoai HR thi tu choi ngan gon bang tieng Viet va khong goi tool.
+
+---
+
+## 5. Ablation Studies & Experiments
+
+### Experiment 1: Chatbot Baseline vs ReAct Agent
+
+| Case | Chatbot Baseline | ReAct Agent | Winner |
 | :--- | :--- | :--- | :--- |
-| **Câu hỏi chung** (JD, email...) | Chính xác (Khả năng ngôn ngữ tốt) | Chính xác (Hành văn tốt) | Hòa |
-| **Tra cứu dữ liệu cụ thể** (Phép còn lại) | Bịa đặt số liệu (Hallucinated) | Chính xác 100% (Gọi tool chính xác) | **Agent** |
-| **Tính toán lương phức tạp** (Lương Net) | Thất bại hoàn toàn (Không có dữ liệu) | Chính xác 100% (Thực thi toán học backend) | **Agent** |
-| **Chính sách riêng nội bộ** (Hệ số OT) | Trả lời sai luật của công ty | Trả lời chính xác (Tra cứu đúng tệp policy) | **Agent** |
+| Simple HR policy | Co the tra loi chung chung, de sai policy noi bo | Goi `search_policy` de lay policy noi bo | Agent |
+| Leave balance | Khong co database, de hallucinate | Goi `get_leave_balance` | Agent |
+| Payroll calculation | Khong co du lieu luong noi bo | Goi `calculate_payroll` va tinh bang backend | Agent |
+| Missing employee | De doan sai | Tool tra loi khong tim thay | Agent |
+| Non-HR request | Co the tra loi binh thuong | Tu choi dung pham vi HR | Agent v2 |
+
+### Experiment 2: Agent v1 vs Agent v2
+
+| Capability | Agent v1 | Agent v2 |
+| :--- | :--- | :--- |
+| ReAct loop | Co | Co |
+| Tool calling | Co | Co |
+| JSON parse recovery | Chua tot | Co retry feedback |
+| Tool-name guardrail | Chua day du | Co validate |
+| Required-arg validation | Chua day du | Co validate |
+| Out-of-scope handling | Chua ro | Co rule trong system prompt |
 
 ---
 
-## 6. Đánh giá Khả năng Triển khai Thực tế (Production Readiness Review)
+## 6. Production Readiness Review
 
-*Những cân nhắc để đưa hệ thống tác nhân này vào môi trường doanh nghiệp thực tế.*
-
-- **Bảo mật (Security)**: Thực hiện chuẩn hóa và khử trùng các tham số đầu vào của công cụ (Input Sanitization) để ngăn chặn các cuộc tấn công tiêm nhiễm mã độc (prompt injection) phá hoại cơ sở dữ liệu. Thiết lập phân quyền truy cập thông tin lương dựa trên vai trò (RBAC).
-- **Rào chắn bảo vệ (Guardrails)**: Giới hạn nghiêm ngặt số bước tối đa (Max Steps) thông qua thanh trượt GUI để chặn đứng các vòng lặp vô hạn sinh chi phí token lớn khi LLM gặp lỗi logic hoặc lỗi API.
-- **Khả năng mở rộng (Scaling)**: Chuyển dịch thiết kế của tác nhân sang kiến trúc dựa trên đồ thị **LangGraph** để có thể dễ dàng quản lý các rẽ nhánh phức tạp và tích hợp quy trình phê duyệt của con người (Human-in-the-loop) đối với dữ liệu nhạy cảm.
+- **Security**: Can them RBAC cho du lieu nhay cam nhu luong. Vi du nhan vien thuong khong nen xem payroll cua nguoi khac.
+- **Privacy**: Log hien tai co the ghi noi dung request va result. Khi dua vao production can mask thong tin luong, ID nhan vien hoac du lieu ca nhan.
+- **Guardrails**: Da co `max_steps`, validate tool va validate args. Can them prompt-injection defense neu ket noi voi du lieu that.
+- **Reliability**: Nen them automated scoring cho 10 scenario thay vi chi manual review.
+- **Scaling**: Co the chuyen mock data sang database/RAG, va dung LangGraph neu workflow HR co phe duyet nhieu buoc.
+- **Monitoring**: Nen them aggregate report tu logs: success rate, parser error rate, avg latency, avg token, avg steps.
 
 ---
+
+## 7. How to Reproduce
+
+### Run tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+### Run Streamlit demo
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run src\Gui\app.py
+```
+
+Open:
+
+```text
+http://localhost:8501
+```
+
+### Run comparative evaluation
+
+```powershell
+.\.venv\Scripts\python.exe tests\test_hr_agent.py
+```
+
+The script writes a generated report to:
+
+```text
+report/comparative_evaluation_report.md
+```
